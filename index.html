@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>視覺追蹤遊戲 - 專業教學版</title>
+    <style>
+        /* 基礎設定：全黑背景，防止捲動 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            color: yellow;
+            font-family: 'PingFang HK', 'Microsoft JhengHei', sans-serif;
+            overflow: hidden;
+            touch-action: none; /* 禁止 iPad 縮放與捲動 */
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* --- 移動物件樣式 --- */
+        .object-wrapper {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            width: 350px; /* 觸控感應區大小 */
+            height: 350px;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2;
+            /* 讓觸控更靈敏 */
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* 巨大的圖案 (Emoji) */
+        .item-icon {
+            font-size: 13rem;
+            user-select: none;
+            z-index: 3;
+            /* 平滑過渡動畫 */
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        /* 成功時的彈跳動畫 */
+        @keyframes success-pop {
+            0% { transform: scale(1); }
+            40% { transform: scale(1.8) rotate(15deg); filter: drop-shadow(0 0 30px white); }
+            70% { transform: scale(1.1) rotate(-10deg); }
+            100% { transform: scale(1.2); }
+        }
+
+        .success-active .item-icon {
+            animation: success-pop 0.8s forwards;
+        }
+
+        /* --- 進度圓環 (SVG) --- */
+        .progress-ring {
+            position: absolute;
+            z-index: 1;
+            pointer-events: none; /* 讓點擊穿透圓環直達圖案 */
+        }
+
+        .progress-ring svg {
+            width: 400px;
+            height: 400px;
+        }
+
+        .progress-ring circle {
+            fill: transparent;
+            stroke: rgba(255, 255, 255, 0.7); /* 半透明白色光環 */
+            stroke-width: 14;
+            /* 圓周長計算: 2 * PI * r(170) ≈ 1068 */
+            stroke-dasharray: 1068;
+            stroke-dashoffset: 1068; /* 初始隱藏 */
+            stroke-linecap: round;
+        }
+
+        /* --- 特效層 --- */
+        /* 1. 成功時的白光閃爍 */
+        #flash-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .flash-active {
+            animation: flash-anim 0.6s ease-out;
+        }
+
+        @keyframes flash-anim {
+            0% { opacity: 0.5; }
+            100% { opacity: 0; }
+        }
+
+        /* 2. 最終慶祝的彩色絲帶 */
+        #confetti-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 8;
+        }
+
+        .confetti {
+            position: absolute;
+            width: 12px;
+            height: 25px;
+            opacity: 0.8;
+            top: -50px;
+            animation: fall linear forwards;
+        }
+
+        @keyframes fall {
+            to { transform: translateY(110vh) rotate(720deg); }
+        }
+
+        /* --- 介面與設定頁面 --- */
+        #start-screen {
+            position: absolute;
+            z-index: 10;
+            background: black;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .settings-panel {
+            margin-bottom: 40px;
+            background: rgba(255,255,255,0.1); /* 深灰半透明背景 */
+            padding: 30px;
+            border-radius: 30px;
+            border: 2px solid #555;
+            width: 80%;
+            max-width: 600px;
+        }
+
+        .speed-options {
+            display: flex;
+            justify-content: space-around;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .speed-btn {
+            flex: 1;
+            padding: 20px 10px;
+            font-size: 1.5rem;
+            background: #444;
+            color: white;
+            border: 3px solid transparent;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: bold;
+        }
+
+        /* 選中狀態 */
+        .speed-btn.active {
+            background: #ff4500; /* 橙紅色 */
+            border-color: yellow;
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(255, 69, 0, 0.5);
+        }
+
+        .main-start-btn {
+            padding: 25px 80px;
+            font-size: 2.5rem;
+            background: #FFD700; /* 金黃色 */
+            color: black;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 10px 0 #b8860b;
+            transition: transform 0.1s;
+        }
+
+        .main-start-btn:active {
+            transform: translateY(5px);
+            box-shadow: 0 5px 0 #b8860b;
+        }
+
+        /* 下一個按鈕 */
+        #next-btn {
+            position: absolute;
+            bottom: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            z-index: 6;
+            background: #00FF7F; /* 春綠色 */
+            padding: 20px 60px;
+            font-size: 2.2rem;
+            border: none;
+            border-radius: 50px;
+            font-weight: bold;
+            color: black;
+            box-shadow: 0 8px 0 #008f47;
+            cursor: pointer;
+        }
+
+        #next-btn:active {
+            transform: translate(-50%, 4px);
+            box-shadow: 0 4px 0 #008f47;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 特效層 -->
+    <div id="flash-overlay"></div>
+    <div id="confetti-container"></div>
+
+    <!-- 開始與設定畫面 -->
+    <div id="start-screen">
+        <h1 style="font-size: 3.5rem; color: yellow; margin-bottom: 30px;">眼睛看看小動物 👁️</h1>
+        
+        <div class="settings-panel">
+            <div style="font-size: 1.8rem; color: white;">選擇移動速度：</div>
+            <div class="speed-options">
+                <!-- 預設選中'中速' -->
+                <button class="speed-btn" onclick="setSpeed('slow', this)">慢<br><span style="font-size:1rem">Slow</span></button>
+                <button class="speed-btn active" onclick="setSpeed('medium', this)">中<br><span style="font-size:1rem">Medium</span></button>
+                <button class="speed-btn" onclick="setSpeed('fast', this)">快<br><span style="font-size:1rem">Fast</span></button>
+            </div>
+        </div>
+
+        <button class="main-start-btn" onclick="startGame()">開始遊戲</button>
+    </div>
+
+    <!-- 遊戲主畫面 -->
+    <div id="game-container">
+        <div id="current-object" class="object-wrapper">
+            <!-- 進度圈 -->
+            <div class="progress-ring">
+                <svg>
+                    <circle id="loading-circle" r="170" cx="200" cy="200"></circle>
+                </svg>
+            </div>
+            <!-- Emoji 圖案 -->
+            <div id="icon" class="item-icon"></div>
+        </div>
+        
+        <!-- 綠色下一個按鈕 -->
+        <button id="next-btn" onclick="nextItem()">下一個 &#10132;</button>
+    </div>
+
+    <script>
+        // --- 遊戲資料設定 ---
+        const items = [
+            { name: '小鳥兒', icon: '🐦' },
+            { name: '小青蛙', icon: '🐸' },
+            { name: '小雨點', icon: '🌧️' },
+            { name: '小雞', icon: '🐥' },
+            { name: '太陽', icon: '☀️' }
+        ];
+
+        // 讚賞語庫
+        const praiseWords = ["好叻啊！", "你做得到！", "好棒啊！", "真係聰明！", "太厲害了！"];
+        // 絲帶顏色庫
+        const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500'];
+
+        // --- 變數初始化 ---
+        let currentIndex = 0;
+        let isGazing = false; // 是否正在注視/按住
+        let gazeStartTime = 0;
+        const gazeDuration = 1000; // 需要注視的時間 (毫秒)
+        let isCompleted = false;
+
+        // 速度參數 (像素/幀)
+        let currentSpeedFactor = 2.8; // 預設中速
+        const speedMap = {
+            'slow': 1.2,
+            'medium': 2.8,
+            'fast': 5.0
+        };
+
+        // 移動物理量
+        let posX, posY, velX, velY;
+        const objSize = 400; // 物件容器大小，用於邊界計算
+
+        // DOM 元素緩存
+        const iconEl = document.getElementById('icon');
+        const circleEl = document.getElementById('loading-circle');
+        const nextBtn = document.getElementById('next-btn');
+        const wrapper = document.getElementById('current-object');
+        const flashOverlay = document.getElementById('flash-overlay');
+        const confettiContainer = document.getElementById('confetti-container');
+        const circleTotalLength = 1068; // 對應 CSS stroke-dasharray
+
+        // --- 設定功能 ---
+        function setSpeed(speed, btn) {
+            currentSpeedFactor = speedMap[speed];
+            // 更新按鈕樣式
+            document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // 語音反饋設定
+            let speedName = speed === 'slow' ? '慢速' : speed === 'medium' ? '中速' : '快速';
+            speak(speedName);
+        }
+
+        // --- 遊戲流程控制 ---
+        function startGame() {
+            document.getElementById('start-screen').style.display = 'none';
+            // 觸發一次空的語音以解鎖瀏覽器自動播放限制
+            speak(""); 
+            loadItem();
+            animate();
+        }
+
+        function loadItem() {
+            isCompleted = false;
+            nextBtn.style.display = 'none';
+            wrapper.classList.remove('success-active'); // 移除成功動畫
+            
+            const current = items[currentIndex];
+            iconEl.textContent = current.icon;
+            
+            // 隨機初始位置 (確保不會生在螢幕外)
+            posX = Math.random() * (window.innerWidth - objSize) + objSize/2;
+            posY = Math.random() * (window.innerHeight - objSize) + objSize/2;
+            
+            // 根據設定的速度計算隨機方向
+            velX = (Math.random() > 0.5 ? 1 : -1) * (currentSpeedFactor + Math.random() * 0.5);
+            velY = (Math.random() > 0.5 ? 1 : -1) * (currentSpeedFactor + Math.random() * 0.5);
+
+            resetCircle();
+            speak(`去搵下 ${current.name} 喺邊度？`);
+        }
+
+        function resetCircle() {
+            // 重置進度條為全空
+            circleEl.style.strokeDashoffset = circleTotalLength;
+        }
+
+        // --- 動畫循環 (每一幀執行) ---
+        function animate(timestamp) {
+            // 如果還沒完成，繼續移動和檢測
+            if (!isCompleted) {
+                // 1. 更新位置
+                posX += velX;
+                posY += velY;
+
+                // 2. 邊界反彈檢測
+                if (posX + objSize/2 > window.innerWidth || posX - objSize/2 < 0) {
+                    velX *= -1; // X軸反轉
+                }
+                if (posY + objSize/2 > window.innerHeight || posY - objSize/2 < 0) {
+                    velY *= -1; // Y軸反轉
+                }
+
+                // 3. 應用位置樣式
+                wrapper.style.left = `${posX}px`;
+                wrapper.style.top = `${posY}px`;
+
+                // 4. 注視計時邏輯
+                if (isGazing) {
+                    if (!gazeStartTime) gazeStartTime = timestamp;
+                    const elapsed = timestamp - gazeStartTime;
+                    
+                    // 計算進度比例 (0 到 1)
+                    const progress = Math.min(elapsed / gazeDuration, 1);
+                    // 更新 SVG 圓環
+                    circleEl.style.strokeDashoffset = circleTotalLength - (progress * circleTotalLength);
+
+                    // 判斷是否完成
+                    if (elapsed >= gazeDuration) {
+                        completeItem();
+                    }
+                } else {
+                    // 如果手指放開，重置計時
+                    gazeStartTime = 0;
+                    resetCircle();
+                }
+            }
+            // 請求下一幀
+            requestAnimationFrame(animate);
+        }
+
+        // --- 成功處理 ---
+        function completeItem() {
+            isCompleted = true;
+            
+            // 1. 視覺特效：閃光 + 彈跳
+            flashOverlay.classList.remove('flash-active');
+            void flashOverlay.offsetWidth; // 強制重繪
+            flashOverlay.classList.add('flash-active');
+            wrapper.classList.add('success-active');
+
+            // 2. 隨機讚賞語音
+            const praise = praiseWords[Math.floor(Math.random() * praiseWords.length)];
+            speak(`${items[currentIndex].name}！${praise}。大家比啲掌聲！`);
+            
+            // 3. 震動反饋 (如果裝置支援)
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
+            // 4. 延遲顯示下一個按鈕
+            setTimeout(() => {
+                if (currentIndex < items.length - 1) {
+                    nextBtn.style.display = 'block';
+                } else {
+                    finalCelebration();
+                }
+            }, 800);
+        }
+
+        function finalCelebration() {
+            // 全通關慶祝
+            speak("哇！你完成晒所有挑戰喇！好叻啊！");
+            createConfetti();
+            
+            // 持續噴發絲帶
+            const interval = setInterval(createConfetti, 1000);
+            
+            // 6秒後重整頁面
+            setTimeout(() => {
+                clearInterval(interval);
+                setTimeout(() => location.reload(), 5000);
+            }, 6000);
+        }
+
+        // --- 絲帶生成邏輯 ---
+        function createConfetti() {
+            for (let i = 0; i < 50; i++) {
+                const confetti = document.createElement('div');
+                confetti.className = 'confetti';
+                // 隨機位置與顏色
+                confetti.style.left = Math.random() * 100 + 'vw';
+                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                // 隨機大小
+                confetti.style.width = (Math.random() * 10 + 5) + 'px';
+                confetti.style.height = (Math.random() * 20 + 10) + 'px';
+                // 隨機落下速度
+                confetti.style.animationDuration = (Math.random() * 3 + 2) + 's';
+                confettiContainer.appendChild(confetti);
+                
+                // 動畫結束後移除 DOM
+                setTimeout(() => confetti.remove(), 5000);
+            }
+        }
+
+        function nextItem() {
+            currentIndex++;
+            loadItem();
+        }
+
+        // --- TTS 語音合成 ---
+        function speak(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel(); // 停止上一句
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'zh-HK'; // 廣東話
+                utterance.rate = 1.0;
+                utterance.pitch = 1.2; // 稍微調高音調，聽起來較親切
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // --- 觸控交互事件 ---
+        // 支援觸控屏
+        wrapper.addEventListener('touchstart', (e) => { 
+            isGazing = true; 
+            e.preventDefault(); // 防止觸控時產生滑動
+        });
+        wrapper.addEventListener('touchend', () => { isGazing = false; });
+        
+        // 支援滑鼠 (方便測試或電腦使用)
+        wrapper.addEventListener('mousedown', () => { isGazing = true; });
+        window.addEventListener('mouseup', () => { isGazing = false; });
+    </script>
+</body>
+</html>
